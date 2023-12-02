@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Human and Sound Detection</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #f4f4f4;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 24px;
+            color: #333;
+        }
+
+        #lights {
+            display: flex;
+            gap: 20px;
+        }
+
+        .light {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: #ccc;
+            transition: background-color 0.5s; /* Add smooth transition effect */
+        }
+
+        #green-light {
+            background-color: green;
+        }
+
+        #blue-light {
+            background-color: #6fa0e4;
+        }
+
+        #red-light {
+            background-color: red;
+        }
+
+        #video-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin: 20px 0;
+        }
+
+        video {
+            width: 100%;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <header>Live Human and Sound Detection</header>
+    
+    <div id="lights">
+        <div id="green-light" class="light"></div>
+        <div id="blue-light" class="light"></div>
+        <div id="red-light" class="light"></div>
+    </div>
+
+    <div id="video-container">
+        <video id="video" autoplay playsinline></video>
+    </div>
+
+    <audio id="detection-sound" src="path/to/detection-sound.mp3" preload="auto"></audio>
+    <audio id="sound-detection-sound" src="path/to/sound-detection-sound.mp3" preload="auto"></audio>
+
+    <script>
+        async function setupCamera() {
+            const video = document.getElementById('video');
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            video.srcObject = stream;
+
+            return new Promise((resolve) => {
+                video.onloadedmetadata = () => {
+                    resolve(video);
+                };
+            });
+        }
+
+        async function detect() {
+            const video = await setupCamera();
+            const greenLight = document.getElementById('green-light');
+            const blueLight = document.getElementById('blue-light');
+            const redLight = document.getElementById('red-light');
+            const soundDetectionSound = document.getElementById('sound-detection-sound');
+
+            video.volume = 0; // Mute the video to avoid feedback noise
+
+            video.addEventListener('play', () => {
+                let personDetected = false;
+                let soundDetected = false;
+
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const analyser = audioContext.createAnalyser();
+                const microphone = audioContext.createMediaStreamSource(video.srcObject);
+
+                microphone.connect(analyser);
+
+                analyser.fftSize = 256;
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+
+                analyser.getByteFrequencyData(dataArray);
+
+                const threshold = 50; // Adjust this threshold based on your environment
+
+                function checkDetection() {
+                    analyser.getByteFrequencyData(dataArray);
+                    const average = calculateAverage(dataArray);
+
+                    if (average > threshold) {
+                        soundDetected = true;
+                        blueLight.style.backgroundColor = '#6fa0e4';
+                        playDetectionSound();
+                    } else {
+                        soundDetected = false;
+                        blueLight.style.backgroundColor = '#ccc';
+                        playSoundDetectionSound();
+                    }
+
+                    if (personDetected) {
+                        greenLight.style.backgroundColor = 'green';
+                        redLight.style.backgroundColor = '#ccc';
+                    } else if (soundDetected) {
+                        greenLight.style.backgroundColor = '#ccc';
+                        redLight.style.backgroundColor = '#ccc';
+                    } else {
+                        greenLight.style.backgroundColor = '#ccc';
+                        redLight.style.backgroundColor = 'red';
+                    }
+
+                    requestAnimationFrame(checkDetection);
+                }
+
+                video.addEventListener('loadedmetadata', () => {
+                    const model = window['cocoSsd']; // Assume cocoSsd is loaded globally
+                    detectPerson(model, video, () => {
+                        personDetected = true;
+                    });
+                });
+
+                checkDetection();
+            });
+        }
+
+        function calculateAverage(array) {
+            const sum = array.reduce((acc, value) => acc + value, 0);
+            return sum / array.length;
+        }
+
+        function detectPerson(model, video, callback) {
+            model.load().then((loadedModel) => {
+                function detect() {
+                    loadedModel.detect(video).then((predictions) => {
+                        const personPresent = predictions.some(prediction => prediction.class === 'person' && prediction.score > 0.5);
+                        if (personPresent) {
+                            callback();
+                        }
+                        requestAnimationFrame(detect);
+                    });
+                }
+                detect();
+            });
+        }
+
+        function playDetectionSound() {
+            const detectionSound = document.getElementById('detection-sound');
+            detectionSound.play();
+        }
+
+        function playSoundDetectionSound() {
+            const soundDetectionSound = document.getElementById('sound-detection-sound');
+            soundDetectionSound.play();
+        }
+
+        detect();
+    </script>
+</body>
+</html>
